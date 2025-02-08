@@ -1,0 +1,18 @@
+[submodule "external/Vulkan-Headers"]
+	path = external/Vulkan-Headers
+	url = https://github.com/KhronosGroup/Vulkan-Headers.git
+[submodule "external/glfw"]
+	path = external/glfw
+	url = https://github.com/glfw/glfw.git
+[submodule "external/glm"]
+	path = external/glm
+	url = https://github.com/g-truc/glm.git
+[submodule "external/cxxopts"]
+	path = external/cxxopts
+	url = https://github.com/jarro2783/cxxopts.git
+[submodule "external/tinygltf"]
+	path = external/tinygltf
+	url = https://github.com/syoyo/tinygltf
+[submodule "models"]
+	path = models
+	url = https://github.com/KhronosGroup/glTF-Sample-Assets.git
