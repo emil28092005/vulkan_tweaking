@@ -7,6 +7,10 @@
 #include <cstdlib>
 #include <set>
 #include <fstream>
+#include <optional>
+#include <vector>
+#include <algorithm>
+#include <filesystem>
 
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo,
