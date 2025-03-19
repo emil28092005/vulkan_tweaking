@@ -19,30 +19,121 @@
 #include "tiny_gltf.h"
 
 using namespace tinygltf;
-bool load_gltf() {
-    Model model;
+
+struct Vertex {
+    glm::vec3 pos;
+    glm::vec3 normal;
+    glm::vec2 uv;
+};
+
+std::vector<Vertex> vertices;
+std::vector<uint32_t> indices;
+VkBuffer vertexBuffer;
+VkDeviceMemory vertexBufferMemory;
+VkBuffer indexBuffer;
+VkDeviceMemory indexBufferMemory;
+
+Model model;
+
+void loadModel() {
     TinyGLTF loader;
     std::string err;
     std::string warn;
 
-    bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, "models/Models/BrainStem/glTF/BrainStem.gltf"); // YOUR GLTF HERE
-    //bool ret = loader.LoadBinaryFromFile(&model, &err, &warn, argv[1]); // for binary glTF(.glb)
+    bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, "models/Models/BrainStem/glTF/BrainStem.gltf");
 
-    if (!warn.empty()) {
-        printf("Warn: %s\n", warn.c_str());
+    if (!ret) throw std::runtime_error("Failed to load GLTF: " + err);
+
+    // Получение данных вершин и индексов
+    for (const auto& mesh : model.meshes) {
+        for (const auto& primitive : mesh.primitives) {
+            // Вершины
+            const auto& positionAccessor = model.accessors[primitive.attributes.at("POSITION")];
+            const auto& positionView = model.bufferViews[positionAccessor.bufferView];
+            const auto& positionBuffer = model.buffers[positionView.buffer];
+            const float* positions = reinterpret_cast<const float*>(&positionBuffer.data[positionView.byteOffset + positionAccessor.byteOffset]);
+
+            // Нормали (если есть)
+            const auto& normalAccessor = model.accessors[primitive.attributes.at("NORMAL")];
+            const auto& normalView = model.bufferViews[normalAccessor.bufferView];
+            const auto& normalBuffer = model.buffers[normalView.buffer];
+            const float* normals = reinterpret_cast<const float*>(&normalBuffer.data[normalView.byteOffset + normalAccessor.byteOffset]);
+
+            // Индексы
+            const auto& indexAccessor = model.accessors[primitive.indices];
+            const auto& indexView = model.bufferViews[indexAccessor.bufferView];
+            const auto& indexBuffer = model.buffers[indexView.buffer];
+            const uint16_t* indicesSrc = reinterpret_cast<const uint16_t*>(&indexBuffer.data[indexView.byteOffset + indexAccessor.byteOffset]);
+
+            // Заполнение векторов
+            for (size_t i = 0; i < positionAccessor.count; i++) {
+                Vertex vertex{};
+                vertex.pos = glm::vec3(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+                vertex.normal = glm::vec3(normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]);
+                vertices.push_back(vertex);
+            }
+
+            for (size_t i = 0; i < indexAccessor.count; i++) {
+                indices.push_back(indicesSrc[i]);
+            }
+        }
     }
-
-    if (!err.empty()) {
-        printf("Err: %s\n", err.c_str());
-    }
-
-    if (!ret) {
-        printf("Failed to parse glTF\n");
-        return -1;
-    }
-
-
 }
+
+void createVertexBuffer() {
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = sizeof(vertices[0]) * vertices.size();
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    vkCreateBuffer(device, &bufferInfo, nullptr, &vertexBuffer);
+
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(device, vertexBuffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    vkAllocateMemory(device, &allocInfo, nullptr, &vertexBufferMemory);
+    vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
+
+    void* data;
+    vkMapMemory(device, vertexBufferMemory, 0, bufferInfo.size, 0, &data);
+    memcpy(data, vertices.data(), bufferInfo.size);
+    vkUnmapMemory(device, vertexBufferMemory);
+}
+
+VkVertexInputBindingDescription bindingDescription{};
+bindingDescription.binding = 0;
+bindingDescription.stride = sizeof(Vertex);
+bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
+attributeDescriptions[0].binding = 0;
+attributeDescriptions[0].location = 0;
+attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+attributeDescriptions[0].offset = offsetof(Vertex, pos);
+
+attributeDescriptions[1].binding = 0;
+attributeDescriptions[1].location = 1;
+attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+attributeDescriptions[1].offset = offsetof(Vertex, normal);
+
+VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+vertexInputInfo.vertexBindingDescriptionCount = 1;
+vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+//***
+vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer, offsets);
+vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
     const VkAllocationCallbacks* pAllocator,
@@ -221,6 +312,9 @@ private:
         setupDebugMessenger();
         createSurface();
         pickPhysicalDevice();
+        loadModel();
+        createVertexBuffer();
+        createIndexBuffer();
         createLogicalDevice();
         createSwapChain();
         createImageViews();
@@ -893,6 +987,10 @@ private:
     }
 
     void cleanup() {
+        vkDestroyBuffer(device, vertexBuffer, nullptr);
+        vkFreeMemory(device, vertexBufferMemory, nullptr);
+        vkDestroyBuffer(device, indexBuffer, nullptr);
+        vkFreeMemory(device, indexBufferMemory, nullptr);
         vkDeviceWaitIdle(device);
         vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
         vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
