@@ -16,6 +16,10 @@
 #include <filesystem>
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include "tiny_gltf.h"
 
 using namespace tinygltf;
@@ -106,34 +110,6 @@ void createVertexBuffer() {
     memcpy(data, vertices.data(), bufferInfo.size);
     vkUnmapMemory(device, vertexBufferMemory);
 }
-
-VkVertexInputBindingDescription bindingDescription{};
-bindingDescription.binding = 0;
-bindingDescription.stride = sizeof(Vertex);
-bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
-attributeDescriptions[0].binding = 0;
-attributeDescriptions[0].location = 0;
-attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-attributeDescriptions[0].offset = offsetof(Vertex, pos);
-
-attributeDescriptions[1].binding = 0;
-attributeDescriptions[1].location = 1;
-attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-attributeDescriptions[1].offset = offsetof(Vertex, normal);
-
-VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
-vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-vertexInputInfo.vertexBindingDescriptionCount = 1;
-vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
-
-//***
-vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer, offsets);
-vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
     const VkAllocationCallbacks* pAllocator,
@@ -720,7 +696,7 @@ private:
     void createGraphicsPipeline() {
         auto vertShaderCode = readFile("shaders/vert.spv");
         auto fragShaderCode = readFile("shaders/frag.spv");
-       
+
         VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
         VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
 
@@ -741,10 +717,32 @@ private:
             fragShaderStageInfo,
         };
 
-        VkPipelineVertexInputStateCreateInfo vertexInputState{};
-        vertexInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertexInputState.vertexBindingDescriptionCount = 0;
-        vertexInputState.vertexAttributeDescriptionCount = 0;
+        // Vertex input configuration
+        bindingDescription.binding = 0;
+        bindingDescription.stride = sizeof(Vertex);
+        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        attributeDescriptions[0].binding = 0;
+        attributeDescriptions[0].location = 0;
+        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[0].offset = offsetof(Vertex, pos);
+
+        attributeDescriptions[1].binding = 0;
+        attributeDescriptions[1].location = 1;
+        attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[1].offset = offsetof(Vertex, normal);
+
+        attributeDescriptions[2].binding = 0;
+        attributeDescriptions[2].location = 2;
+        attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[2].offset = offsetof(Vertex, uv);
+
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInputInfo.vertexBindingDescriptionCount = 1;
+        vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+        vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
         VkPipelineInputAssemblyStateCreateInfo inputAssemblyState{};
         inputAssemblyState.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -763,7 +761,7 @@ private:
         rasterizerState.polygonMode = VK_POLYGON_MODE_FILL;
         rasterizerState.lineWidth = 1.0f;
         rasterizerState.cullMode = VK_CULL_MODE_BACK_BIT;
-        rasterizerState.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        rasterizerState.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; // Исправлено на правильное направление
         rasterizerState.depthBiasEnable = VK_FALSE;
 
         VkPipelineMultisampleStateCreateInfo multisamplingState{};
@@ -772,23 +770,22 @@ private:
         multisamplingState.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        colorBlendAttachment.colorWriteMask =
+            VK_COLOR_COMPONENT_R_BIT |
+            VK_COLOR_COMPONENT_G_BIT |
+            VK_COLOR_COMPONENT_B_BIT |
+            VK_COLOR_COMPONENT_A_BIT;
         colorBlendAttachment.blendEnable = VK_FALSE;
 
         VkPipelineColorBlendStateCreateInfo colorBlendState{};
         colorBlendState.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
         colorBlendState.logicOpEnable = VK_FALSE;
-        colorBlendState.logicOp = VK_LOGIC_OP_COPY;
         colorBlendState.attachmentCount = 1;
         colorBlendState.pAttachments = &colorBlendAttachment;
-        colorBlendState.blendConstants[0] = 0.0f;
-        colorBlendState.blendConstants[1] = 0.0f;
-        colorBlendState.blendConstants[2] = 0.0f;
-        colorBlendState.blendConstants[3] = 0.0f;
 
         std::vector<VkDynamicState> dynamicStates = {
-                VK_DYNAMIC_STATE_VIEWPORT,
-                VK_DYNAMIC_STATE_SCISSOR
+            VK_DYNAMIC_STATE_VIEWPORT,
+            VK_DYNAMIC_STATE_SCISSOR
         };
         VkPipelineDynamicStateCreateInfo dynamicState{};
         dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
@@ -808,7 +805,7 @@ private:
         pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
         pipelineInfo.stageCount = shaderStages.size();
         pipelineInfo.pStages = shaderStages.data();
-        pipelineInfo.pVertexInputState = &vertexInputState;
+        pipelineInfo.pVertexInputState = &vertexInputInfo; // Исправленный vertex input
         pipelineInfo.pInputAssemblyState = &inputAssemblyState;
         pipelineInfo.pViewportState = &viewportState;
         pipelineInfo.pRasterizationState = &rasterizerState;
@@ -820,14 +817,14 @@ private:
         pipelineInfo.renderPass = renderPass;
         pipelineInfo.subpass = 0;
         pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-        pipelineInfo.basePipelineIndex = -1;
 
         if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create a graphics pipeline");
+            throw std::runtime_error("failed to create graphics pipeline!");
         }
 
-        vkDestroyShaderModule(device, fragShaderModule, nullptr);
+        // Cleanup shader modules
         vkDestroyShaderModule(device, vertShaderModule, nullptr);
+        vkDestroyShaderModule(device, fragShaderModule, nullptr);
     }
 
     void createFramebuffers() {
