@@ -205,8 +205,6 @@ private:
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
     Model model;
-    VkPhysicalDevice physicalDevice;
-    VkDevice device;
 
 
 #ifdef NDEBUG
