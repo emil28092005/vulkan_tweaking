@@ -42,9 +42,19 @@ void loadModel() {
     std::string err;
     std::string warn;
 
-    bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, "models/Models/BrainStem/glTF/BrainStem.gltf");
+    bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, "C:/Users/emil2/OneDrive/Desktop/Coding/Study/CGDG/vulkan_tweaking/models/Models/BrainStem/glTF/BrainStem.gltf");
 
-    if (!ret) throw std::runtime_error("Failed to load GLTF: " + err);
+    if (!warn.empty()) {
+        std::cout << "GLTF warning: " << warn << std::endl;
+    }
+
+    if (!err.empty()) {
+        std::cerr << "GLTF error: " << err << std::endl;
+    }
+
+    if (!ret) {
+        throw std::runtime_error("Failed to load GLTF: " + err);
+    }
 
     // Получение данных вершин и индексов
     for (const auto& mesh : model.meshes) {
@@ -80,6 +90,7 @@ void loadModel() {
             }
         }
     }
+
 }
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
@@ -202,6 +213,7 @@ private:
             "VK_LAYER_KHRONOS_validation"
     };
     std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
     Model model;
@@ -300,6 +312,11 @@ private:
     }
     private:
         void createVertexBuffer() {
+            if (vertices.empty()) {
+                throw std::runtime_error("No vertices loaded!");
+            }
+
+            VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
             VkBufferCreateInfo bufferInfo{};
             bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
             bufferInfo.size = sizeof(vertices[0]) * vertices.size();
@@ -593,6 +610,11 @@ private:
     }
 
     void createIndexBuffer() {
+        if (indices.empty()) {
+            throw std::runtime_error("No indices loaded!");
+        }
+
+        VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferInfo.size = sizeof(indices[0]) * indices.size();
