@@ -28,70 +28,6 @@ struct Vertex {
     glm::vec2 uv;
 };
 
-std::vector<Vertex> vertices;
-std::vector<uint32_t> indices;
-VkBuffer vertexBuffer;
-VkDeviceMemory vertexBufferMemory;
-VkBuffer indexBuffer;
-VkDeviceMemory indexBufferMemory;
-
-Model model;
-
-void loadModel() {
-    TinyGLTF loader;
-    std::string err;
-    std::string warn;
-
-    bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, "C:/Users/emil2/OneDrive/Desktop/Coding/Study/CGDG/vulkan_tweaking/models/Models/BrainStem/glTF/BrainStem.gltf");
-
-    if (!warn.empty()) {
-        std::cout << "GLTF warning: " << warn << std::endl;
-    }
-
-    if (!err.empty()) {
-        std::cerr << "GLTF error: " << err << std::endl;
-    }
-
-    if (!ret) {
-        throw std::runtime_error("Failed to load GLTF: " + err);
-    }
-
-    // Получение данных вершин и индексов
-    for (const auto& mesh : model.meshes) {
-        for (const auto& primitive : mesh.primitives) {
-            // Вершины
-            const auto& positionAccessor = model.accessors[primitive.attributes.at("POSITION")];
-            const auto& positionView = model.bufferViews[positionAccessor.bufferView];
-            const auto& positionBuffer = model.buffers[positionView.buffer];
-            const float* positions = reinterpret_cast<const float*>(&positionBuffer.data[positionView.byteOffset + positionAccessor.byteOffset]);
-
-            // Нормали (если есть)
-            const auto& normalAccessor = model.accessors[primitive.attributes.at("NORMAL")];
-            const auto& normalView = model.bufferViews[normalAccessor.bufferView];
-            const auto& normalBuffer = model.buffers[normalView.buffer];
-            const float* normals = reinterpret_cast<const float*>(&normalBuffer.data[normalView.byteOffset + normalAccessor.byteOffset]);
-
-            // Индексы
-            const auto& indexAccessor = model.accessors[primitive.indices];
-            const auto& indexView = model.bufferViews[indexAccessor.bufferView];
-            const auto& indexBuffer = model.buffers[indexView.buffer];
-            const uint16_t* indicesSrc = reinterpret_cast<const uint16_t*>(&indexBuffer.data[indexView.byteOffset + indexAccessor.byteOffset]);
-
-            // Заполнение векторов
-            for (size_t i = 0; i < positionAccessor.count; i++) {
-                Vertex vertex{};
-                vertex.pos = glm::vec3(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
-                vertex.normal = glm::vec3(normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]);
-                vertices.push_back(vertex);
-            }
-
-            for (size_t i = 0; i < indexAccessor.count; i++) {
-                indices.push_back(indicesSrc[i]);
-            }
-        }
-    }
-
-}
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
     const VkAllocationCallbacks* pAllocator,
@@ -216,6 +152,8 @@ private:
     std::vector<uint32_t> indices;
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
+    VkBuffer indexBuffer;
+    VkDeviceMemory indexBufferMemory;
     Model model;
 
 
@@ -277,7 +215,7 @@ private:
         createSurface();
         pickPhysicalDevice();
         createLogicalDevice();
-        loadModel();
+        loadModel(); // Должен быть вызван перед createVertexBuffer()
         createVertexBuffer();
         createIndexBuffer();
         createSwapChain();
@@ -311,6 +249,96 @@ private:
         return true;
     }
     private:
+        void loadModel() {
+            TinyGLTF loader;
+            std::string err;
+            std::string warn;
+
+            bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, "C:/Users/emil2/OneDrive/Desktop/Coding/Study/CGDG/vulkan_tweaking/models/Models/BrainStem/glTF/BrainStem.gltf");
+
+            if (!warn.empty()) {
+                std::cout << "GLTF warning: " << warn << std::endl;
+            }
+
+            if (!err.empty()) {
+                std::cerr << "GLTF error: " << err << std::endl;
+            }
+
+            if (!ret) {
+                throw std::runtime_error("Failed to load GLTF: " + err);
+            }
+            for (const auto& mesh : model.meshes) {
+                for (const auto& primitive : mesh.primitives) {
+                    // 1. Проверка атрибутов
+                    auto posAttr = primitive.attributes.find("POSITION");
+                    auto normalAttr = primitive.attributes.find("NORMAL");
+
+                    if (posAttr == primitive.attributes.end() || normalAttr == primitive.attributes.end()) {
+                        std::cerr << "Missing required attributes in primitive" << std::endl;
+                        continue;
+                    }
+
+                    // 2. Загрузка вершин
+                    const auto& positionAccessor = model.accessors[posAttr->second];
+                    // ... (остальной код загрузки позиций)
+
+                    // 3. Загрузка индексов с проверкой типа
+                    const auto& indexAccessor = model.accessors[primitive.indices];
+                    if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+                        const uint16_t* indicesSrc = reinterpret_cast<const uint16_t*>(
+                            &indexBuffer.data[indexView.byteOffset + indexAccessor.byteOffset]);
+                        // Конвертация в uint32_t
+                        for (size_t i = 0; i < indexAccessor.count; i++) {
+                            indices.push_back(static_cast<uint32_t>(indicesSrc[i]));
+                        }
+                    }
+                    else if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
+                        const uint32_t* indicesSrc = reinterpret_cast<const uint32_t*>(
+                            &indexBuffer.data[indexView.byteOffset + indexAccessor.byteOffset]);
+                        indices.insert(indices.end(), indicesSrc, indicesSrc + indexAccessor.count);
+                    }
+                    else {
+                        std::cerr << "Unsupported index type: " << indexAccessor.componentType << std::endl;
+                    }
+                }
+            }
+            // Получение данных вершин и индексов
+            for (const auto& mesh : model.meshes) {
+                for (const auto& primitive : mesh.primitives) {
+                    // Вершины
+                    const auto& positionAccessor = model.accessors[primitive.attributes.at("POSITION")];
+                    const auto& positionView = model.bufferViews[positionAccessor.bufferView];
+                    const auto& positionBuffer = model.buffers[positionView.buffer];
+                    const float* positions = reinterpret_cast<const float*>(&positionBuffer.data[positionView.byteOffset + positionAccessor.byteOffset]);
+
+                    // Нормали (если есть)
+                    const auto& normalAccessor = model.accessors[primitive.attributes.at("NORMAL")];
+                    const auto& normalView = model.bufferViews[normalAccessor.bufferView];
+                    const auto& normalBuffer = model.buffers[normalView.buffer];
+                    const float* normals = reinterpret_cast<const float*>(&normalBuffer.data[normalView.byteOffset + normalAccessor.byteOffset]);
+
+                    // Индексы
+                    const auto& indexAccessor = model.accessors[primitive.indices];
+                    const auto& indexView = model.bufferViews[indexAccessor.bufferView];
+                    const auto& indexBuffer = model.buffers[indexView.buffer];
+                    const uint16_t* indicesSrc = reinterpret_cast<const uint16_t*>(&indexBuffer.data[indexView.byteOffset + indexAccessor.byteOffset]);
+
+                    // Заполнение векторов
+                    for (size_t i = 0; i < positionAccessor.count; i++) {
+                        Vertex vertex{};
+                        vertex.pos = glm::vec3(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+                        vertex.normal = glm::vec3(normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]);
+                        vertices.push_back(vertex);
+                    }
+
+                    for (size_t i = 0; i < indexAccessor.count; i++) {
+                        indices.push_back(indicesSrc[i]);
+                    }
+                }
+            }
+            std::cout << "Loaded " << vertices.size() << " vertices, "
+                << indices.size() << " indices" << std::endl;
+        }
         void createVertexBuffer() {
             if (vertices.empty()) {
                 throw std::runtime_error("No vertices loaded!");
