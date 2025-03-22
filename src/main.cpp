@@ -214,8 +214,15 @@ private:
     };
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
+<<<<<<< Updated upstream
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
+=======
+    VkBuffer vertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+    VkBuffer indexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
+>>>>>>> Stashed changes
     Model model;
 
 
@@ -311,6 +318,94 @@ private:
         return true;
     }
     private:
+<<<<<<< Updated upstream
+=======
+        void loadModel() {
+            TinyGLTF loader;
+            std::string err;
+            std::string warn;
+
+            bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, "C:/Users/emil2/OneDrive/Desktop/Coding/Study/CGDG/vulkan_tweaking/models/Models/BrainStem/glTF/BrainStem.gltf");
+
+            if (!warn.empty()) {
+                std::cout << "GLTF warning: " << warn << std::endl;
+            }
+
+            if (!err.empty()) {
+                std::cerr << "GLTF error: " << err << std::endl;
+            }
+
+            if (!ret) {
+                throw std::runtime_error("Failed to load GLTF: " + err);
+            }
+
+            // Очистим предыдущие данные
+            vertices.clear();
+            indices.clear();
+
+            for (const auto& mesh : model.meshes) {
+                for (const auto& primitive : mesh.primitives) {
+                    // Сначала обработаем POSITION, чтобы создать vertices
+                    for (const auto& attribute : primitive.attributes) {
+                        if (attribute.first == "POSITION") {
+                            const tinygltf::Accessor& accessor = model.accessors[attribute.second];
+                            const tinygltf::BufferView& bufferView = model.bufferViews[accessor.bufferView];
+                            const tinygltf::Buffer& buffer = model.buffers[bufferView.buffer];
+                            const float* vertexData = reinterpret_cast<const float*>(&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
+
+                            // Заполняем vertices
+                            vertices.resize(accessor.count); // Важно: задаем размер заранее
+                            for (size_t i = 0; i < accessor.count; ++i) {
+                                vertices[i].pos = glm::vec3(
+                                    vertexData[i * 3 + 0],
+                                    vertexData[i * 3 + 1],
+                                    vertexData[i * 3 + 2]
+                                );
+                            }
+                            break; // Выходим после обработки POSITION
+                        }
+                    }
+
+                    // Затем обрабатываем остальные атрибуты (NORMAL, TEXCOORD_0)
+                    for (const auto& attribute : primitive.attributes) {
+                        if (attribute.first == "NORMAL") {
+                            const tinygltf::Accessor& accessor = model.accessors[attribute.second];
+                            const tinygltf::BufferView& bufferView = model.bufferViews[accessor.bufferView];
+                            const tinygltf::Buffer& buffer = model.buffers[bufferView.buffer];
+                            const float* normalData = reinterpret_cast<const float*>(&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
+
+                            // Проверяем, что vertices имеет достаточный размер
+                            if (vertices.size() < accessor.count) {
+                                throw std::runtime_error("Mismatch between POSITION and NORMAL counts");
+                            }
+
+                            for (size_t i = 0; i < accessor.count; ++i) {
+                                vertices[i].normal = glm::vec3(
+                                    normalData[i * 3 + 0],
+                                    normalData[i * 3 + 1],
+                                    normalData[i * 3 + 2]
+                                );
+                            }
+                        }
+                        else if (attribute.first == "TEXCOORD_0") {
+                            const tinygltf::Accessor& accessor = model.accessors[attribute.second];
+                            const tinygltf::BufferView& bufferView = model.bufferViews[accessor.bufferView];
+                            const tinygltf::Buffer& buffer = model.buffers[bufferView.buffer];
+                            const float* uvData = reinterpret_cast<const float*>(&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
+
+                            for (size_t i = 0; i < accessor.count; ++i) {
+                                vertices[i].uv = glm::vec2(
+                                    uvData[i * 2 + 0],
+                                    uvData[i * 2 + 1]
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+        }
+>>>>>>> Stashed changes
         void createVertexBuffer() {
             if (vertices.empty()) {
                 throw std::runtime_error("No vertices loaded!");
@@ -987,6 +1082,12 @@ private:
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+        VkBuffer vertexBuffers[] = { vertexBuffer };
+        VkDeviceSize offsets[] = { 0 };
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+
         VkViewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
@@ -1001,7 +1102,7 @@ private:
         scissor.extent = swapChainExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+        vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
         vkCmdEndRenderPass(commandBuffer);
 
@@ -1088,7 +1189,14 @@ private:
 
         vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyInstance(instance, nullptr);
-
+        if (vertexBuffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device, vertexBuffer, nullptr);
+            vkFreeMemory(device, vertexBufferMemory, nullptr);
+        }
+        if (indexBuffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device, indexBuffer, nullptr);
+            vkFreeMemory(device, indexBufferMemory, nullptr);
+        }
         glfwDestroyWindow(window);
 
         glfwTerminate();
