@@ -143,6 +143,7 @@ private:
     const std::string engineName = "The Best Engine";
     const std::vector<const char*> deviceExtensions = {
             VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+            VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
             "VK_KHR_portability_subset",
     };
     const std::vector<const char*> validationLayers = {
@@ -267,41 +268,7 @@ private:
             if (!ret) {
                 throw std::runtime_error("Failed to load GLTF: " + err);
             }
-            for (const auto& mesh : model.meshes) {
-                for (const auto& primitive : mesh.primitives) {
-                    // 1. Проверка атрибутов
-                    auto posAttr = primitive.attributes.find("POSITION");
-                    auto normalAttr = primitive.attributes.find("NORMAL");
 
-                    if (posAttr == primitive.attributes.end() || normalAttr == primitive.attributes.end()) {
-                        std::cerr << "Missing required attributes in primitive" << std::endl;
-                        continue;
-                    }
-
-                    // 2. Загрузка вершин
-                    const auto& positionAccessor = model.accessors[posAttr->second];
-                    // ... (остальной код загрузки позиций)
-
-                    // 3. Загрузка индексов с проверкой типа
-                    const auto& indexAccessor = model.accessors[primitive.indices];
-                    if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-                        const uint16_t* indicesSrc = reinterpret_cast<const uint16_t*>(
-                            &indexBuffer.data[indexView.byteOffset + indexAccessor.byteOffset]);
-                        // Конвертация в uint32_t
-                        for (size_t i = 0; i < indexAccessor.count; i++) {
-                            indices.push_back(static_cast<uint32_t>(indicesSrc[i]));
-                        }
-                    }
-                    else if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
-                        const uint32_t* indicesSrc = reinterpret_cast<const uint32_t*>(
-                            &indexBuffer.data[indexView.byteOffset + indexAccessor.byteOffset]);
-                        indices.insert(indices.end(), indicesSrc, indicesSrc + indexAccessor.count);
-                    }
-                    else {
-                        std::cerr << "Unsupported index type: " << indexAccessor.componentType << std::endl;
-                    }
-                }
-            }
             // Получение данных вершин и индексов
             for (const auto& mesh : model.meshes) {
                 for (const auto& primitive : mesh.primitives) {
@@ -626,6 +593,11 @@ private:
         createInfo.ppEnabledExtensionNames = deviceExtensions.data();
         createInfo.enabledLayerCount = 0;
 
+        VkPhysicalDeviceSynchronization2Features syncFeatures{};
+        syncFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+        syncFeatures.synchronization2 = true;
+        createInfo.pNext = &syncFeatures;
+        
         if (enableValidationLayers) {
             createInfo.enabledLayerCount = validationLayers.size();
             createInfo.ppEnabledLayerNames = validationLayers.data();
@@ -1029,7 +1001,12 @@ private:
         scissor.extent = swapChainExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+        // TODO: Add VertexBUffer binding
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer, offsets);
+        vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+        vkCmdDraw(commandBuffer, indices.size(), 1, 0, 0);
 
         vkCmdEndRenderPass(commandBuffer);
 
