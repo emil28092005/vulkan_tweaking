@@ -272,7 +272,7 @@ private:
             for (const auto& node_id : nodes) {
                 auto node = model.nodes[node_id];
 
-                glm::mat4x4 localTransform;
+                glm::mat4x4 localTransform(1);
                 if (node.translation.size() == 3) {
                     localTransform = glm::translate(localTransform, glm::vec3(glm::make_vec3(node.translation.data())));
                 }
@@ -357,7 +357,7 @@ private:
                 throw std::runtime_error("Failed to load GLTF: " + err);
             }
 
-            processNodes(model.scenes[0].nodes, glm::mat4x4{});
+            processNodes(model.scenes[0].nodes, glm::mat4x4(1));
 
             std::cout << "Loaded " << vertices.size() << " vertices, "
                 << indices.size() << " indices" << std::endl;
