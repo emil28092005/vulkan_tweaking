@@ -6,6 +6,8 @@ layout(location = 2) in vec2 inUV;
 
 layout(binding = 0) uniform UniformBufferObject {
         mat4 model;
+        mat4 view;
+        mat4 projection;
 } ubo;
 
 layout(location = 0) out vec3 fragColor;
@@ -23,6 +25,6 @@ vec3 colors[3] = vec3[] (
 );
 
 void main() {
-    gl_Position = ubo.model * vec4(inPosition, 1.0);
-    fragColor = inNormal;
+    gl_Position = ubo.projection * ubo.view * ubo.model * vec4(inPosition, 1.0);
+    fragColor = clamp(inNormal, vec3(0.0), vec3(1.0));
 }

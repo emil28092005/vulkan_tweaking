@@ -31,8 +31,8 @@ struct Vertex {
 
 struct UniformBufferObject {
     glm::mat4 model;
-    //glm::mat4 view;
-    //glm::mat4 proj;
+    glm::mat4 view;
+    glm::mat4 proj;
 };
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
@@ -158,6 +158,9 @@ private:
     std::vector<std::vector<Vertex>> vertices;
     std::vector<std::vector<uint32_t>> indices;
     std::vector<glm::mat4x4> worldMatrices;
+    glm::mat4x4 viewMatrix;
+    glm::mat4x4 projectionMatrix;
+
     std::vector<VkBuffer> vertexBuffer;
     std::vector<VkDeviceMemory> vertexBufferMemory;
     std::vector<VkBuffer> indexBuffer;
@@ -294,6 +297,10 @@ private:
                     worldMatrices.push_back(transform);
                 }
 
+                if (node.camera == 0) {
+                    viewMatrix = glm::inverse(transform);
+                }
+
                 processNodes(node.children, transform);
             }
         };
@@ -356,6 +363,27 @@ private:
             if (!ret) {
                 throw std::runtime_error("Failed to load GLTF: " + err);
             }
+
+            viewMatrix = glm::mat4x4(1);
+            projectionMatrix = glm::mat4x4(1);
+            //glm::perspectiveFovLH(60.f, static_cast<float>(WIDTH), static_cast<float>(HEIGHT), 0.001f, 1000.f);
+            if (model.cameras.size() > 0)
+            {
+                const auto& camera = model.cameras[0];
+                if (camera.type == "perspective")
+                {   
+                    projectionMatrix = glm::perspectiveRH(camera.perspective.yfov, camera.perspective.aspectRatio, camera.perspective.znear, camera.perspective.zfar);
+                }
+                if (camera.type == "orthographic")
+                {
+                    auto right = camera.orthographic.xmag / 2.f;
+                    auto left = - right;
+                    auto top = camera.orthographic.ymag / 2.f;
+                    auto bottom = - top;
+                    projectionMatrix = glm::orthoRH(left, right, bottom, top, camera.orthographic.znear, camera.orthographic.zfar);
+                }
+            }
+            projectionMatrix[1][1] *= -1.0f;
 
             processNodes(model.scenes[0].nodes, glm::mat4x4(1));
 
@@ -1204,6 +1232,8 @@ private:
         {
             UniformBufferObject ubo{};
             ubo.model = worldMatrices[i];
+            ubo.view = viewMatrix;
+            ubo.proj = projectionMatrix;
             memcpy(uniformBuffersMapped[i], &ubo, sizeof(ubo));
         }
 
